@@ -1,14 +1,20 @@
 # Create desktop notifications
-from notifypy import Notify
+import platform
+from pathlib import Path
 
-notification = Notify()
+from notifypy import Notify
 
 
 # TODO: change to sms or email
 def send_notification(drone_id: int):
+    notification = Notify(
+        default_notification_application_name="Drone API",
+        enable_logging=True,
+    )
     notification.title = "Upcoming Schedule"
-    notification.message = f"Drone with id {drone_id} is about to departure"
-    notification.icon = "drone.png"
+    notification.message = f"Drone {drone_id} is starting its mission"
+    if platform.system() != "Darwin":
+        notification.icon = str(Path(__file__).with_name("drone.png"))
 
-    # Display the notification
-    notification.send()
+    if not notification.send():
+        raise RuntimeError(f"Could not send desktop notification for drone {drone_id}")

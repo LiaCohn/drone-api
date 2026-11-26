@@ -112,6 +112,16 @@ On startup, an asynchronous background task polls the database every **2 minutes
 
 When an in-progress schedule's `end_time` has passed, the scheduler marks it `completed` and resets the drone to `available`.
 
+### Testing desktop notifications
+
+Test a notification independently of MongoDB and the API:
+
+```bash
+python -c "from server.notifications import send_notification; send_notification(9001)"
+```
+
+On macOS, `notify-py` uses its bundled Notificator app and does not support custom notification icons. If no notification appears, allow notifications for Notificator in **System Settings → Notifications**, and ensure the API is running in a logged-in desktop session (not over SSH or in a headless process). Notification send failures are logged and do not stop the mission scheduler.
+
 ## Testing
 
 A Postman collection is included at `Drones API.postman_collection.json`. Import it into Postman to explore and test all available endpoints.

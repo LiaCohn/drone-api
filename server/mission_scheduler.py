@@ -63,7 +63,10 @@ async def check_and_fire_missions():
                 f"Failed to mark schedule {mission['id']} as in-progress"
             )
 
-        await asyncio.to_thread(send_notification, drone_id)
+        try:
+            await asyncio.to_thread(send_notification, drone_id)
+        except Exception:
+            logger.exception("Could not send notification for drone %s", drone_id)
 
 
 class DroneNotFoundError(Exception):
