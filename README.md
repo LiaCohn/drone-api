@@ -37,41 +37,41 @@ drone-api/
 
 ## Prerequisites
 
-- Python 3.9+
-- A running MongoDB instance (local or Atlas)
+- Docker Desktop with Docker Compose (recommended), or Python 3.9+ and a running MongoDB instance
 
-## Setup
+## Run with Docker
 
-1. **Clone the repository**
+From the project root:
 
-   ```bash
-   git clone <repo-url>
-   cd drone-api
-   ```
+```bash
+docker compose up --build
+```
 
-2. **Install dependencies**
+This starts the API and MongoDB. MongoDB data is kept in the `mongo-data` Docker volume across restarts. The API is available at `http://localhost:8000`, and Swagger UI is at `http://localhost:8000/docs`.
 
-   ```bash
-   pip install fastapi uvicorn motor python-dotenv pydantic notify-py
-   ```
+Stop the containers with `Ctrl+C`, or run `docker compose down`. To also delete the database volume and all stored data, run `docker compose down --volumes`.
 
-3. **Configure environment variables**
+### macOS desktop notifications
 
-   Create a `.env` file in the project root:
+Containers do not have access to the macOS desktop notification center, so the API container cannot display desktop notifications on the Mac. To test notifications, run MongoDB in Docker and run the API natively on macOS instead:
 
-   ```env
-   DB_URI=mongodb://localhost:27017
-   DB_NAME=drone_db
-   ```
+```bash
+docker compose up -d mongo
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+DB_URI=mongodb://127.0.0.1:27017 DB_NAME=drone_db \
+  .venv/bin/uvicorn server.main:app --reload --host 127.0.0.1 --port 8000
+```
 
-4. **Run the server**
+## Run natively
 
-   ```bash
-   uvicorn server.main:app --reload
-   ```
+To run without Docker, install dependencies with `pip install -r requirements.txt`, set `DB_URI` and `DB_NAME` in a `.env` file or the shell environment, and run:
 
-   The API will be available at `http://localhost:8000`.  
-   Interactive docs (Swagger UI) are at `http://localhost:8000/docs`.
+```bash
+uvicorn server.main:app --reload
+```
+
+The API will be available at `http://localhost:8000`; interactive docs are at `http://localhost:8000/docs`.
 
 ## API Overview
 
