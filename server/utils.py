@@ -32,8 +32,8 @@ def extract_doc(doc):
 
 
 # Helper function to check if a drone is available for a new mission in a certain time range
-def is_drone_available(drone_id: int, start_time: datetime, end_time: datetime):
-    existing_schedules = schedules_collection.count_documents(
+async def is_drone_available(drone_id: int, start_time: datetime, end_time: datetime):
+    existing_schedules = await schedules_collection.count_documents(
         {
             "drone_id": drone_id,
             "start_time": {"$lt": end_time},

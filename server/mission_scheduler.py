@@ -1,40 +1,69 @@
 from datetime import datetime
+import asyncio
+import logging
+
 from .database import schedules_collection, drones_collection
 from .notifications import send_notification
 
+logger = logging.getLogger(__name__)
+
 
 async def check_and_fire_missions():
-    # Logic to query the database for scheduled missions
-    # Check if a mission's start time has been reached
-    # If so, mark the associated drone as "on-mission"
-    # Send a desktop notification
     current_time = datetime.now()
-    missions_to_fire = schedules_collection.find(
+    completed_schedules = await schedules_collection.find(
+        {"end_time": {"$lte": current_time}, "status": "in-progress"}
+    ).to_list(length=None)
+
+    for schedule in completed_schedules:
+        result = await schedules_collection.update_one(
+            {
+                "id": schedule["id"],
+                "end_time": {"$lte": current_time},
+                "status": "in-progress",
+            },
+            {"$set": {"status": "completed"}},
+        )
+        if result.modified_count != 1:
+            continue
+
+        await drones_collection.update_one(
+            {"id": schedule["drone_id"]},
+            {"$set": {"status": "available", "current_mission_id": None}},
+        )
+
+    missions_to_fire = await schedules_collection.find(
         {
             "start_time": {"$lte": current_time},
             "status": {"$in": ["pending", "scheduled"]},
         }
-    )
+    ).to_list(length=None)
 
     for mission in missions_to_fire:
         drone_id = mission["drone_id"]
         try:
-            # TODO: mark the schedule is in-progress status
-            mark_drone_as_on_mission(drone_id)
-        except DroneNotFoundError as e:
-            print(f"Drone not found: {str(e)}")
+            await mark_drone_as_on_mission(drone_id, mission["mission_id"])
+        except DroneNotFoundError as error:
+            logger.warning("Drone not found: %s", error)
             continue
-        except OverlappingError as e:
-            # print("Drone already on a mission.")
+        except OverlappingError:
             continue
-        except UpdateFailedError as e:
-            print(f"Failed to update drone status: {str(e)}")
-            continue
-        except Exception as e:
-            print(f"An unexpected error occurred: {str(e)}")
+        except UpdateFailedError as error:
+            logger.error("Failed to update mission state: %s", error)
             continue
 
-        send_notification(drone_id)
+        result = await schedules_collection.update_one(
+            {
+                "id": mission["id"],
+                "status": {"$in": ["pending", "scheduled"]},
+            },
+            {"$set": {"status": "in-progress"}},
+        )
+        if result.modified_count != 1:
+            raise UpdateFailedError(
+                f"Failed to mark schedule {mission['id']} as in-progress"
+            )
+
+        await asyncio.to_thread(send_notification, drone_id)
 
 
 class DroneNotFoundError(Exception):
@@ -49,20 +78,24 @@ class OverlappingError(Exception):
     pass
 
 
-def mark_drone_as_on_mission(drone_id: int):
-    try:
-        drone = drones_collection.find_one(
-            {"id": drone_id, "status": {"$ne": "on-mission"}}
-        )
-        if drone:
-            result = drones_collection.update_one(
-                {"id": drone_id}, {"$set": {"status": "on-mission"}}
-            )
-            if result.modified_count != 1:
-                raise UpdateFailedError(
-                    f"Failed to update drone status with id {drone_id}"
-                )
-        else:
-            raise OverlappingError(f"Drone with id {drone_id} is already on a mission")
-    except Exception as e:
-        raise
+async def mark_drone_as_on_mission(drone_id: int, mission_id: int):
+    drone = await drones_collection.find_one(
+        {"id": drone_id, "status": {"$ne": "on-mission"}}
+    )
+    if not drone:
+        existing_drone = await drones_collection.find_one({"id": drone_id})
+        if existing_drone is None:
+            raise DroneNotFoundError(f"Drone with id {drone_id} does not exist")
+        raise OverlappingError(f"Drone with id {drone_id} is already on a mission")
+
+    result = await drones_collection.update_one(
+        {"id": drone_id, "status": {"$ne": "on-mission"}},
+        {
+            "$set": {
+                "status": "on-mission",
+                "current_mission_id": mission_id,
+            }
+        },
+    )
+    if result.modified_count != 1:
+        raise UpdateFailedError(f"Failed to update drone status with id {drone_id}")

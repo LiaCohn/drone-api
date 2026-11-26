@@ -20,14 +20,8 @@ async def get_schedules():
 
     """
     cursor = schedules_collection.find()
-    if cursor:
-        schedules = extract_multiple_docs(cursor)
-        return {"schedules": schedules}
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal Error: could not fetch data.",
-        )
+    schedules = extract_multiple_docs(await cursor.to_list(length=None))
+    return {"schedules": schedules}
 
 
 # Endpoint to create a new schedule
@@ -58,7 +52,7 @@ async def create_schedule(schedule: Schedule):
     """
 
     # Check if the drone is available for the specified time range
-    if not is_drone_available(
+    if not await is_drone_available(
         schedule.drone_id, schedule.start_time, schedule.end_time
     ):
         raise HTTPException(
@@ -67,7 +61,7 @@ async def create_schedule(schedule: Schedule):
         )
 
         # Check if the mission_id exists in the missions collection
-    mission = missions_collection.find_one({"id": schedule.mission_id})
+    mission = await missions_collection.find_one({"id": schedule.mission_id})
     if not mission:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -75,7 +69,7 @@ async def create_schedule(schedule: Schedule):
         )
 
     # Check if the drone_id exists in the drones collection
-    drone = drones_collection.find_one({"id": schedule.drone_id})
+    drone = await drones_collection.find_one({"id": schedule.drone_id})
     if not drone:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -84,7 +78,7 @@ async def create_schedule(schedule: Schedule):
     if validate_schedule_status(schedule.status):
         schedule_dict = schedule.dict()
 
-        result = schedules_collection.insert_one(schedule_dict)
+        result = await schedules_collection.insert_one(schedule_dict)
         # Check if insertion was successful
         if result.inserted_id:
             return {
@@ -126,16 +120,16 @@ async def update_schedule_status(id: int, status_request: ScheduleStatusRequest)
     update_data = status_request.dict()
 
     if validate_schedule_status(update_data["status"]):
-        schedule = schedules_collection.find_one({"id": id})
+        schedule = await schedules_collection.find_one({"id": id})
         # Check if the schedule exists
         if schedule:
             # Update the status of the schedule
-            schedules_collection.update_one(
+            await schedules_collection.update_one(
                 {"id": id}, {"$set": {"status": update_data["status"]}}
             )
 
             # Return the updated schedule
-            updated_schedule = schedules_collection.find_one({"id": id})
+            updated_schedule = await schedules_collection.find_one({"id": id})
             return {"updated schedule": extract_doc(updated_schedule)}
         else:
             # If the schedule does not exist, raise a 404 Not Found error
@@ -169,16 +163,10 @@ async def get_schedules_date_range(start_date: datetime, end_date: datetime):
     - HTTPException 500: If an internal server error occurs or if no schedules are found.
     """
     # Query the database to find schedules within the specified date range
-    schedules = schedules_collection.find(
+    cursor = schedules_collection.find(
         {"start_time": {"$gte": start_date}, "end_time": {"$lte": end_date}}
     )
-    if not schedules:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal Error: Failed to fatch schedules",
-        )
-
-    result = extract_multiple_docs(schedules)
+    result = extract_multiple_docs(await cursor.to_list(length=None))
 
     return {"schedules": result}
 
@@ -201,13 +189,7 @@ async def get_schedules_by_drone(drone_id: int):
     - HTTPException 404: If no schedules are found for the specified drone ID.
     """
     # Query the database to find schedules associated with the specified drone_id
-    schedules = schedules_collection.find({"drone_id": drone_id})
-    if not schedules:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Schedules for drone {drone_id} not found.",
-        )
-
-    result = extract_multiple_docs(schedules)
+    cursor = schedules_collection.find({"drone_id": drone_id})
+    result = extract_multiple_docs(await cursor.to_list(length=None))
 
     return {"schedules": result}

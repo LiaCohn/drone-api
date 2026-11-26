@@ -19,18 +19,12 @@ async def get_drones():
     - HTTPException 500: If there is an internal server error while fetching the drones.
     """
     cursor = drones_collection.find()
-    if cursor:
-        drones = extract_multiple_docs(cursor)
-        return {"drones": drones}
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal Error: could not fetch data.",
-        )
+    drones = extract_multiple_docs(await cursor.to_list(length=None))
+    return {"drones": drones}
 
 
 # Endpoint to get all drones by availability status
-@router.get("/{drone_status}")
+@router.get("/status/{drone_status}")
 async def get_drones_by_status(drone_status: str):
     """
     Get drones by their status.
@@ -48,7 +42,7 @@ async def get_drones_by_status(drone_status: str):
     """
     if validate_status(drone_status):
         cursor = drones_collection.find({"status": drone_status})
-        drones = extract_multiple_docs(cursor)
+        drones = extract_multiple_docs(await cursor.to_list(length=None))
         return {"drones": drones}
 
     else:
@@ -75,7 +69,7 @@ async def get_drone_by_id(id: int):
     Raises:
     - HTTPException 404: If the specified drone ID is not found in the database.
     """
-    drone = drones_collection.find_one({"id": id})
+    drone = await drones_collection.find_one({"id": id})
     if drone is not None:
         return {"drone": extract_doc(drone)}
 
@@ -107,17 +101,17 @@ async def update_drone_status(id: int, status_request: DroneStatusRequest):
     update_data = status_request.dict()
     if validate_status(update_data["status"]):
         # Retrieve the drone document from the database
-        drone = drones_collection.find_one({"id": id})
+        drone = await drones_collection.find_one({"id": id})
 
         # Check if the drone exists
         if drone:
             # Update the status of the drone
-            drones_collection.update_one(
+            await drones_collection.update_one(
                 {"id": id}, {"$set": {"status": update_data["status"]}}
             )
 
             # Return the updated drone
-            updated_drone = drones_collection.find_one({"id": id})
+            updated_drone = await drones_collection.find_one({"id": id})
             return {"updated_drone": extract_doc(updated_drone)}
         else:
             # If the drone does not exist, raise a 404 Not Found error
@@ -152,7 +146,7 @@ async def create_drone(drone: Drone):
     if validate_status(drone.status):
         drone_dict = drone.dict()
 
-        result = drones_collection.insert_one(drone_dict)
+        result = await drones_collection.insert_one(drone_dict)
         # Check if insertion was successful
         if result.inserted_id:
             return {"message": "Drone created successfully", "drone_id": drone.id}
@@ -191,7 +185,7 @@ async def modify_possible_missions(
     - HTTPException 500: If an error occurs while updating the possible missions for the drone.
     """
     # Find the drone document in the database by ID
-    drone = drones_collection.find_one({"id": id})
+    drone = await drones_collection.find_one({"id": id})
     if not drone:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -200,7 +194,9 @@ async def modify_possible_missions(
 
     # Check if all provided mission IDs exist in the database
     provided_mission_ids = possible_missions_ids.possible_missions_ids
-    existing_missions = missions_collection.find({"id": {"$in": provided_mission_ids}})
+    existing_missions = await missions_collection.find(
+        {"id": {"$in": provided_mission_ids}}
+    ).to_list(length=None)
     existing_mission_ids = [mission["id"] for mission in existing_missions]
     missing_missions = set(provided_mission_ids) - set(existing_mission_ids)
 
@@ -211,7 +207,7 @@ async def modify_possible_missions(
         )
     update_data = possible_missions_ids.dict()
     # Update the possible missions IDs for the drone
-    update_result = drones_collection.update_one(
+    update_result = await drones_collection.update_one(
         {"id": id},
         {"$set": {"possible_missions_ids": update_data["possible_missions_ids"]}},
     )

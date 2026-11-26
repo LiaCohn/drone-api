@@ -2,7 +2,7 @@
 
 A REST API for managing drone fleets, missions, and scheduling — built with FastAPI and MongoDB.
 
-The system allows you to register drones, define missions with trajectories, schedule drones to perform those missions, and automatically dispatch them when their start time arrives. A background scheduler runs every 2 minutes to detect upcoming missions, mark the relevant drone as `on-mission`, and fire a desktop notification.
+The system allows you to register drones, define missions with trajectories, schedule drones to perform those missions, and automatically dispatch them when their start time arrives. An asynchronous background scheduler runs every 2 minutes to start due missions and complete finished ones.
 
 ![Collections Schema](image.png)
 
@@ -12,7 +12,7 @@ The system allows you to register drones, define missions with trajectories, sch
 |---|---|
 | Framework | [FastAPI](https://fastapi.tiangolo.com/) |
 | Server | [Uvicorn](https://www.uvicorn.org/) (ASGI) |
-| Database | [MongoDB](https://www.mongodb.com/) via [PyMongo](https://pymongo.readthedocs.io/) |
+| Database | [MongoDB](https://www.mongodb.com/) via [Motor](https://motor.readthedocs.io/) |
 | Data Validation | [Pydantic](https://docs.pydantic.dev/) |
 | Notifications | [notify-py](https://github.com/ms7m/notify-py) |
 | Config | `python-dotenv` |
@@ -52,7 +52,7 @@ drone-api/
 2. **Install dependencies**
 
    ```bash
-   pip install fastapi uvicorn pymongo python-dotenv pydantic notify-py
+   pip install fastapi uvicorn motor python-dotenv pydantic notify-py
    ```
 
 3. **Configure environment variables**
@@ -80,7 +80,7 @@ drone-api/
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/drones/` | List all drones |
-| `GET` | `/drones/{status}` | Filter drones by status (`available`, `pending`, `on-mission`) |
+| `GET` | `/drones/status/{status}` | Filter drones by status (`available`, `pending`, `on-mission`) |
 | `GET` | `/drones/{id}` | Get a drone by ID |
 | `POST` | `/drones/` | Register a new drone |
 | `PUT` | `/drones/{id}` | Update a drone's status |
@@ -105,10 +105,12 @@ drone-api/
 
 ## Background Scheduler
 
-On startup, a background task polls the database every **2 minutes**. For any schedule whose `start_time` has passed and whose status is `pending` or `scheduled`, it:
+On startup, an asynchronous background task polls the database every **2 minutes**. For any schedule whose `start_time` has passed and whose status is `pending` or `scheduled`, it:
 
-1. Marks the drone's status as `on-mission` in MongoDB.
+1. Marks the schedule as `in-progress` and the drone as `on-mission`, recording its `current_mission_id`.
 2. Sends a desktop notification via `notify-py`.
+
+When an in-progress schedule's `end_time` has passed, the scheduler marks it `completed` and resets the drone to `available`.
 
 ## Testing
 

@@ -1,12 +1,33 @@
+from contextlib import asynccontextmanager
+import asyncio
+
 from fastapi import FastAPI
 import uvicorn
-import asyncio
-import threading
-from .utils import *
+
 from .mission_scheduler import check_and_fire_missions
 from .routers import drones, missions, schedules
 
-app = FastAPI()
+
+async def periodic_task():
+    while True:
+        await check_and_fire_missions()
+        await asyncio.sleep(120)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler_task = asyncio.create_task(periodic_task())
+    try:
+        yield
+    finally:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(drones.router)
 app.include_router(schedules.router)
@@ -18,29 +39,6 @@ app.include_router(missions.router)
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
-
-
-# Function to run the task in a separate thread
-def threaded_task():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(check_and_fire_missions())
-    loop.close()
-
-
-# Asynchronous function to execute periodically
-async def periodic_task():
-    while True:
-        t = threading.Thread(target=threaded_task)
-        t.start()
-        # sleep for 120 seconds before executing again
-        await asyncio.sleep(120)
-
-
-# define a background task when the server is up
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(periodic_task())
 
 
 if __name__ == "__main__":

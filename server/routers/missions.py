@@ -19,14 +19,8 @@ async def get_missions():
     - HTTPException 500: If there is an internal server error while fetching the missions.
     """
     cursor = missions_collection.find()
-    if cursor:
-        missions = extract_multiple_docs(cursor)
-        return {"missions": missions}
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal Error: could not fetch data.",
-        )
+    missions = extract_multiple_docs(await cursor.to_list(length=None))
+    return {"missions": missions}
 
 
 # Endpoint to create a new mission
@@ -56,7 +50,7 @@ async def create_mission(mission: Mission):
         missions_dict["priority"]
     ):
         # TODO: check if trajectory exists in db
-        result = missions_collection.insert_one(missions_dict)
+        result = await missions_collection.insert_one(missions_dict)
         # Check if insertion was successful
         if result.inserted_id:
             return {"message": "Mission created successfully", "mission_id": mission.id}
